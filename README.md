@@ -1,3 +1,6 @@
+Check the outcome of this project here: https://lookerstudio.google.com/u/8/reporting/1c962069-a7c8-447c-8533-d07b54ecfd96/page/p_byo2h9rlhd
+
+
 # Organisation Information Scraper
 
 This Python script automates the process of extracting organisation information from a publicly available registry of recognized sponsors for regular labour and highly skilled migrants. The script fetches data from specific URLs, processes the information, and saves it into a CSV file for easy access and manipulation.
