@@ -1,22 +1,32 @@
-# This code has been written by Rowan Jacobs for a project to get more familiar writing code and build a project which solves a real problem.
-# You could see the outcome of the data of this code on this url: https://lookerstudio.google.com/u/8/reporting/1c962069-a7c8-447c-8533-d07b54ecfd96/page/p_byo2h9rlhd
-# If you have any recommendations or want to ask something, reach out to me on contact@rowanjacobs.nl
 import requests
 from bs4 import BeautifulSoup
-import csv
+import re
+import pandas as pd
 import time
 
-def save_data_to_csv(data, file_path):
-    # Write the data to a CSV file
-    with open(file_path, mode='w', newline='', encoding='utf-8') as csv_file:
-        fieldnames = ['Organisation', 'KvK number', 'KvK info URL', 'Company URL', 'Company Info']
-        writer = csv.DictWriter(csv_file, fieldnames=fieldnames)
+# Function to extract city names from description
+def extract_city_names(description):
+    if isinstance(description, str):
+        match = re.search(r'gevestigd op.*?,\s*[0-9]{4}\s*[A-Z]{0,2},?\s*([^,\n]+)(\.|$)', description, re.IGNORECASE)
+        if match:
+            return match.group(1).strip()
+    return ''
 
-        writer.writeheader()
-        for entry in data:
-            writer.writerow(entry)
+# Function to extract industry description from description
+def extract_industry_description(description):
+    if isinstance(description, str):
+        match = re.search(r'binnen de industrie(.*?)(\.|$)', description)
+        if match:
+            return match.group(1).strip()
+    return ''
 
-    print(f'Data has been written to {file_path}')
+# Function to extract founding date from description
+def extract_founding_date(description):
+    if isinstance(description, str):
+        match = re.search(r'Het bedrijf is opgericht in (\d{4})(\.|$)', description)
+        if match:
+            return match.group(1).strip()
+    return ''
 
 def get_company_info(company_url):
     try:
@@ -31,6 +41,17 @@ def get_company_info(company_url):
         print(f'Error fetching company info from {company_url}: {e}')
         return 'N/A'
 
+def save_data_to_csv(data, file_path):
+    # Convert data to DataFrame
+    df = pd.DataFrame(data)
+    # Extract additional information
+    df['City Names'] = df['Company Info'].apply(extract_city_names)
+    df['Industry Description'] = df['Company Info'].apply(extract_industry_description)
+    df['Founding Date'] = df['Company Info'].apply(extract_founding_date)
+    # Write the data to a CSV file
+    df.to_csv(file_path, index=False, mode='a', header=not pd.io.common.file_exists(file_path))
+    print(f'Data has been written to {file_path}')
+
 # URL of the main page
 url = 'https://ind.nl/en/public-register-recognised-sponsors/public-register-regular-labour-and-highly-skilled-migrants'
 
@@ -43,7 +64,7 @@ response.raise_for_status()  # Check if the request was successful
 soup = BeautifulSoup(response.text, 'lxml')
 print("Main page fetched and parsed.")
 
-# Find tables
+# Find the table
 table = soup.find('table')
 
 # Lists to store organisations, KvK numbers, and KvK info URLs
@@ -55,21 +76,18 @@ kvk_info_urls = []
 rows = table.find_all('tr')
 
 for row in rows:
-    # Find organisation name
-    org_cell = row.find('th', scope='row')
-    if org_cell:
-        organisation = org_cell.text.strip()
+    # Find organisation name and KvK number in the 'td' elements
+    cells = row.find_all('td')
+    if len(cells) == 2:
+        organisation = cells[0].text.strip()
         organisations.append(organisation)
 
-        # Find KvK number
-        kvk_cell = row.find('td')
-        if kvk_cell:
-            kvk_number = kvk_cell.text.strip()
-            kvk_numbers.append(kvk_number)
+        kvk_number = cells[1].text.strip()
+        kvk_numbers.append(kvk_number)
 
-            # Generate KvK info URL
-            kvk_info_url = f'https://www.creditsafe.com/business-index/nl-nl/search?searchQuery=&number={kvk_number}'
-            kvk_info_urls.append(kvk_info_url)
+        # Generate KvK info URL
+        kvk_info_url = f'https://www.creditsafe.com/business-index/nl-nl/search?searchQuery=&number={kvk_number}'
+        kvk_info_urls.append(kvk_info_url)
 
 print(f"Found {len(organisations)} organisations.")
 
@@ -90,9 +108,9 @@ for kvk_info_url in kvk_info_urls:
         soup = BeautifulSoup(response.text, 'lxml')
 
         # Find the 'View company' button and retrieve the URL
-        bekijk_bedrijf_button = soup.select_one('a[href*="company/id"]')
-        if bekijk_bedrijf_button:
-            company_url = bekijk_bedrijf_button['href']
+        view_company_button = soup.select_one('a[href*="company/id"]')
+        if view_company_button:
+            company_url = view_company_button['href']
             if not company_url.startswith('https://'):
                 company_url = 'https://www.creditsafe.com' + company_url
             print(f"Company URL found: {company_url}")
@@ -114,12 +132,10 @@ for kvk_info_url in kvk_info_urls:
     if iteration_count % max_iterations == 0:
         print(f"Saving intermediate data at iteration {iteration_count}...")
         # Combine all data into a list of dictionaries
-        data = [{'Organisation': org, 'KvK number': kvk, 'KvK info URL': info_url, 'Company URL': company_url,
-                 'Company Info': company_info}
+        data = [{'Organisation': org, 'KvK number': kvk, 'KvK info URL': info_url, 'Company URL': company_url, 'Company Info': company_info}
                 for org, kvk, info_url, company_url, company_info in
-                zip(organisations[:iteration_count], kvk_numbers[:iteration_count], kvk_info_urls[:iteration_count],
-                    company_urls, company_infos)]
-        save_data_to_csv(data, 'organisations_kvk_intermediate.csv')
+                zip(organisations[:iteration_count], kvk_numbers[:iteration_count], kvk_info_urls[:iteration_count], company_urls, company_infos)]
+        save_data_to_csv(data, 'organisations_kvk.csv')
 
 # Combine all data into a list of dictionaries
 data = [{'Organisation': org, 'KvK number': kvk, 'KvK info URL': info_url, 'Company URL': company_url,
